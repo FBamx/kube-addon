@@ -1,0 +1,20 @@
+domain: addon.io
+layout:
+- go.kubebuilder.io/v3
+projectName: kube-addon
+repo: kube-addon
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: addon.io
+  group: apps
+  kind: AdvancedJob
+  path: kube-addon/api/v1
+  version: v1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
+version: "3"

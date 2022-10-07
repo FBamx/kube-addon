@@ -1,0 +1,6 @@
+apiVersion: apps.addon.io/v1
+kind: AdvancedJob
+metadata:
+  name: advancedjob-sample
+spec:
+  # TODO(user): Add fields here
