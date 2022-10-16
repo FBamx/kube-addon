@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"kube-addon/pkg/controllers"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -32,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	appsv1 "kube-addon/api/v1"
-	"kube-addon/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -79,8 +79,9 @@ func main() {
 	}
 
 	if err = (&controllers.AdvancedJobReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("advancedjob-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AdvancedJob")
 		os.Exit(1)

@@ -27,20 +27,192 @@ import (
 
 // AdvancedJobSpec defines the desired state of AdvancedJob
 type AdvancedJobSpec struct {
-	Parallelism             *intstr.IntOrString `json:"parallelism,omitempty" protobuf:"varint,1,opt,name=parallelism"`
-	Template                v1.PodTemplateSpec  `json:"template,omitempty"`
-	Completions             *int32              `json:"completions,omitempty" protobuf:"varint,2,opt,name=completions"`
-	ActiveDeadlineSeconds   *int64              `json:"activeDeadlineSeconds,omitempty" protobuf:"varint,3,opt,name=activeDeadlineSeconds"`
-	BackoffLimit            *int32              `json:"backoffLimit,omitempty" protobuf:"varint,7,opt,name=backoffLimit"`
-	TTLSecondsAfterFinished *int32              `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,8,opt,name=ttlSecondsAfterFinished"`
-	Suspend                 *bool               `json:"suspend,omitempty" protobuf:"varint,10,opt,name=suspend"`
+	// Parallelism specifies the maximum desired number of pods the job should
+	// run at any given time. The actual number of pods running in steady state will
+	// be less than this number when the work left to do is less than max parallelism.
+	// Not setting this value means no limit.
+	// +optional
+	Parallelism *intstr.IntOrString `json:"parallelism,omitempty" protobuf:"varint,1,opt,name=parallelism"`
+
+	// Template describes the pod that will be created when executing a job.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Template v1.PodTemplateSpec `json:"template" protobuf:"bytes,2,opt,name=template"`
+
+	// CompletionPolicy indicates the completion policy of the job.
+	// Default is Always CompletionPolicyType.
+	// +optional
+	CompletionPolicy CompletionPolicy `json:"completionPolicy" protobuf:"bytes,3,opt,name=completionPolicy"`
+
+	// Paused will pause the job.
+	// +optional
+	Paused bool `json:"paused,omitempty" protobuf:"bytes,4,opt,name=paused"`
+
+	// FailurePolicy indicates the behavior of the job, when failed pod is found.
+	// +optional
+	FailurePolicy FailurePolicy `json:"failurePolicy,omitempty" protobuf:"bytes,5,opt,name=failurePolicy"`
 }
+
+// CompletionPolicy indicates the completion policy for the job
+type CompletionPolicy struct {
+	// Type indicates the type of the CompletionPolicy.
+	// Default is Always.
+	Type CompletionPolicyType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type,casttype=CompletionPolicyType"`
+
+	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime that the job may be active
+	// before the system tries to terminate it; value must be positive integer.
+	// Only works for Always type.
+	// +optional
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty" protobuf:"varint,2,opt,name=activeDeadlineSeconds"`
+
+	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
+	// execution (either Complete or Failed). If this field is set,
+	// ttlSecondsAfterFinished after the Job finishes, it is eligible to be
+	// automatically deleted. When the Job is being deleted, its lifecycle
+	// guarantees (e.g. finalizers) will be honored. If this field is unset,
+	// the Job won't be automatically deleted. If this field is set to zero,
+	// the Job becomes eligible to be deleted immediately after it finishes.
+	// This field is alpha-level and is only honored by servers that enable the
+	// TTLAfterFinished feature.
+	// Only works for Always type
+	// +optional
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,4,opt,name=ttlSecondsAfterFinished"`
+}
+
+// CompletionPolicyType indicates the type of completion policy
+type CompletionPolicyType string
+
+const (
+	// Always means the job will eventually finish on these conditions:
+	// 1) after all pods on the desired nodes are completed (regardless succeeded or failed),
+	// 2) exceeds ActiveDeadlineSeconds,
+	// 3) exceeds RestartLimit.
+	// This is the default CompletionPolicyType.
+	Always CompletionPolicyType = "Always"
+
+	// Never means the job will be kept alive after all pods on the desired nodes are completed.
+	// This is useful when new nodes are added after the job completes, the pods will be triggered automatically on those new nodes.
+	Never CompletionPolicyType = "Never"
+)
+
+// FailurePolicy indicates the behavior of the job, when failed pod is found.
+type FailurePolicy struct {
+	// Type indicates the type of FailurePolicyType.
+	// Default is FailurePolicyTypeFailFast.
+	Type FailurePolicyType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type,casttype=FailurePolicyType"`
+
+	// RestartLimit specifies the number of retries before marking the pod failed.
+	RestartLimit int32 `json:"restartLimit,omitempty" protobuf:"varint,2,opt,name=restartLimit"`
+}
+
+// FailurePolicyType indicates the type of FailurePolicyType.
+type FailurePolicyType string
+
+const (
+	// FailurePolicyTypeContinue means the job will be still running, when failed pod is found.
+	FailurePolicyTypeContinue FailurePolicyType = "Continue"
+
+	// FailurePolicyTypeFailFast means the job will be failed, when failed pod is found.
+	// This is the default FailurePolicyType.
+	FailurePolicyTypeFailFast FailurePolicyType = "FailFast"
+
+	// FailurePolicyTypePause means the job will be paused, when failed pod is found.
+	FailurePolicyTypePause FailurePolicyType = "Pause"
+)
 
 // AdvancedJobStatus defines the observed state of AdvancedJob
 type AdvancedJobStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// The latest available observations of an object's current state.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []JobCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
+	// Represents time when the job was acknowledged by the job controller.
+	// It is not guaranteed to be set in happens-before order across separate operations.
+	// It is represented in RFC3339 form and is in UTC.
+	// +optional
+	StartTime *metav1.Time `json:"startTime,omitempty" protobuf:"bytes,2,opt,name=startTime"`
+
+	// Represents time when the job was completed. It is not guaranteed to
+	// be set in happens-before order across separate operations.
+	// It is represented in RFC3339 form and is in UTC.
+	// +optional
+	CompletionTime *metav1.Time `json:"completionTime,omitempty" protobuf:"bytes,3,opt,name=completionTime"`
+
+	// The number of actively running pods.
+	// +optional
+	Active int32 `json:"active" protobuf:"varint,4,opt,name=active"`
+
+	// The number of pods which reached phase Succeeded.
+	// +optional
+	Succeeded int32 `json:"succeeded" protobuf:"varint,5,opt,name=succeeded"`
+
+	// The number of pods which reached phase Failed.
+	// +optional
+	Failed int32 `json:"failed" protobuf:"varint,6,opt,name=failed"`
+
+	// The desired number of pods, this is typically equal to the number of nodes satisfied to run pods.
+	// +optional
+	Desired int32 `json:"desired" protobuf:"varint,7,opt,name=desired"`
+
+	// The phase of the job.
+	// +optional
+	Phase AdvancedJobPhase `json:"phase" protobuf:"varint,8,opt,name=phase"`
 }
+
+// JobConditionType indicates valid conditions type of a job
+type JobConditionType string
+
+// These are valid conditions of a job.
+const (
+	// JobComplete means the job has completed its execution. A complete job means pods have been deployed on all
+	// eligible nodes and all pods have reached succeeded or failed state. Note that the eligible nodes are defined at
+	// the beginning of a reconciliation loop. If there are more nodes added within a reconciliation loop, those nodes will
+	// not be considered to run pods.
+	JobComplete JobConditionType = "Complete"
+
+	// JobFailed means the job has failed its execution. A failed job means the job has either exceeded the
+	// ActiveDeadlineSeconds limit, or the aggregated number of container restarts for all pods have exceeded the RestartLimit.
+	JobFailed JobConditionType = "Failed"
+)
+
+// JobCondition describes current state of a job.
+type JobCondition struct {
+	// Type of job condition, Complete or Failed.
+	Type JobConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=JobConditionType"`
+	// Status of the condition, one of True, False, Unknown.
+	Status v1.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=k8s.io/api/core/v1.ConditionStatus"`
+	// Last time the condition was checked.
+	// +optional
+	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty" protobuf:"bytes,3,opt,name=lastProbeTime"`
+	// Last time the condition transit from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+	// (brief) reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
+	// Human readable message indicating details about last transition.
+	// +optional
+	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
+}
+
+// BroadcastJobPhase indicates the phase of the job.
+type AdvancedJobPhase string
+
+const (
+	// PhaseCompleted means the job is completed.
+	PhaseCompleted AdvancedJobPhase = "completed"
+
+	// PhaseRunning means the job is running.
+	PhaseRunning AdvancedJobPhase = "running"
+
+	// PhasePaused means the job is paused.
+	PhasePaused AdvancedJobPhase = "paused"
+
+	// PhaseFailed means the job is failed.
+	PhaseFailed AdvancedJobPhase = "failed"
+)
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status

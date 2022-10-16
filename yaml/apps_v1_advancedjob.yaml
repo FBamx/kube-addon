@@ -1,13 +1,10 @@
-apiVersion: batch/v1
-kind: Job
+apiVersion: apps.addon.io/v1
+kind: AdvancedJob
 metadata:
+  name: advancedjob-sample1
   namespace: dev
-  name: myjob
 spec:
-  completions: 2
   template:
-    metadata:
-      name: d
     spec:
       restartPolicy: OnFailure
       containers:
